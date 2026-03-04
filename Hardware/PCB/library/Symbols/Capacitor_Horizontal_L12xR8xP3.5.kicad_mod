@@ -1,0 +1,115 @@
+(footprint "Capacitor_Horizontal_L12xR8xP3.5"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 1 -7 90)
+		(unlocked yes)
+		(layer "F.SilkS")
+		(uuid "0e6ad9de-6146-4945-aa29-029010a5087f")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.2)
+			)
+		)
+	)
+	(property "Value" "C"
+		(at -1 -7 90)
+		(unlocked yes)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "8bfa4beb-4d5b-4cf3-ac46-5aa640925e34")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.2)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "736b272f-3773-4bb9-ab48-3e70349dfdba")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "48d766c8-986f-4bb4-a286-16be19639038")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr through_hole)
+	(fp_line
+		(start -2.432 -3.664)
+		(end -1.632 -3.664)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "4a7acbd9-d0a8-43d9-b6c3-93f899649416")
+	)
+	(fp_line
+		(start -2.032 -3.264)
+		(end -2.032 -4.064)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "8ee184a9-090a-48b7-9d92-6fec113fca01")
+	)
+	(fp_circle
+		(center 1.27 0)
+		(end 4.318 2.54)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "cc5e0dae-dd55-4567-a2ca-46d0d0575215")
+	)
+	(pad "1" thru_hole rect
+		(at 0 0 180)
+		(size 1.8 1.8)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "123c4a2a-37be-42cd-a575-9c2fc723b471")
+	)
+	(pad "2" thru_hole circle
+		(at 2.54 0 180)
+		(size 1.8 1.8)
+		(drill 1)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "23147d3c-9f26-41dc-b788-01ebbad7faa3")
+	)
+	(embedded_fonts no)
+	(model "C:/Users/Neeraj/OneDrive/Documents/Projects/Major Projects/RF ID Attendance/PCB/library/rf_id_attendance_3dmodels/ElCapLA-3.5-8x12-black.step"
+		(offset
+			(xyz 1.8 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)

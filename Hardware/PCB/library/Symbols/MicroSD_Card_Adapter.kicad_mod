@@ -1,0 +1,188 @@
+(footprint "MicroSD_Card_Adapter"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 6.35 -34.5 0)
+		(unlocked yes)
+		(layer "F.SilkS" knockout)
+		(uuid "ccccf4d5-dd62-44a8-8a54-62eaf5420751")
+		(effects
+			(font
+				(size 1.5 1.5)
+				(thickness 0.3)
+				(bold yes)
+			)
+		)
+	)
+	(property "Value" "MicroSD_Card_Adapter"
+		(at 6.85 -16.4 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "c3d0440c-9cdc-4ea6-b544-688cba630ffc")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "6031114b-1e76-4934-af57-27cfdc3dec86")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "457524f4-5bed-4ac2-a932-29975f5b6dc1")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr through_hole)
+	(fp_rect
+		(start -1.5 -1.5)
+		(end 14.2 1.5)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "72ddd225-bf39-4223-b9e7-48307e1e14e3")
+	)
+	(fp_poly
+		(pts
+			(xy 4.91 -37.375) (xy 6.34 -35.955) (xy 7.76 -37.375)
+		)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill yes)
+		(layer "F.SilkS")
+		(uuid "e5a6f311-8e28-4647-a315-c6a93d318903")
+	)
+	(fp_rect
+		(start -5.75 -38.3)
+		(end 18.45 3.9)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "bbb8e984-409d-4db3-9091-137ccac5dfb5")
+	)
+	(fp_rect
+		(start -5.65 -38.2)
+		(end 18.35 3.8)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "4c62509e-c0e7-48d6-9d46-4c7a783aeadd")
+	)
+	(fp_rect
+		(start -1.15 -35.5)
+		(end 13.85 -20.7)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(fill no)
+		(layer "User.1")
+		(uuid "f13a45d7-b4de-4339-ae4b-d6da967d7631")
+	)
+	(pad "1" thru_hole oval
+		(at 0 0)
+		(size 1.5 2.5)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "58932a88-5f90-4e8d-a991-5368e00b961b")
+	)
+	(pad "2" thru_hole oval
+		(at 2.54 0)
+		(size 1.5 2.5)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "2e8271c3-2d15-42d4-9e04-9642f72b987d")
+	)
+	(pad "3" thru_hole oval
+		(at 5.08 0)
+		(size 1.5 2.5)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "a006480b-a17c-423a-b131-8016f8948cc3")
+	)
+	(pad "4" thru_hole oval
+		(at 7.62 0)
+		(size 1.5 2.5)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "9242b864-e7f7-4218-9178-d7c7f3591c6f")
+	)
+	(pad "5" thru_hole oval
+		(at 10.16 0)
+		(size 1.5 2.5)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "73b0ab5c-6968-472e-a3b9-3474d4da328f")
+	)
+	(pad "6" thru_hole oval
+		(at 12.7 0)
+		(size 1.5 2.5)
+		(drill 1.02)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "9d7e0b4a-865e-4283-86ba-124228fa80a6")
+	)
+	(group ""
+		(uuid "7407b0c7-0777-4268-8685-9c2f6af43a55")
+		(members "4c62509e-c0e7-48d6-9d46-4c7a783aeadd" "f13a45d7-b4de-4339-ae4b-d6da967d7631")
+	)
+	(embedded_fonts no)
+	(model "${KIPRJMOD}/library/vertical_plotter_3dmodels/MicroSD_Card_Module_L1.step"
+		(offset
+			(xyz -5.6 -3.2 2.54)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+	(model "${KIPRJMOD}/library/vertical_plotter_3dmodels/Pin_Header_1x06_P2.54mm_Male_Vertical.step"
+		(offset
+			(xyz 0 0 1.24)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz -180 0 0)
+		)
+	)
+)

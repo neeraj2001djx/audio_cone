@@ -1,0 +1,138 @@
+/* ===== GLOBAL ===== */
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: #e2e8f0;
+}
+
+/* ===== HEADER ===== */
+
+.header {
+    text-align: center;
+    padding: 40px 20px 20px 20px;
+}
+
+.title {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+
+.subtitle {
+    font-size: 14px;
+    opacity: 0.6;
+    margin-top: 5px;
+}
+
+/* ===== GRID ===== */
+
+.device-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 30px;
+    padding: 30px;
+    max-width: 1200px;
+    margin: auto;
+}
+
+/* ===== CARD ===== */
+
+.device-card {
+    background: #1e293b;
+    border-radius: 18px;
+    padding: 25px;
+    border: 2px solid #334155;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.35);
+}
+
+/* Playing state (static highlight only) */
+.device-card.playing {
+    border-color: #22c55e;
+}
+
+/* ===== DEVICE INFO ===== */
+
+.device-name {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.device-status {
+    font-size: 14px;
+    margin-bottom: 20px;
+    text-transform: capitalize;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ===== STATUS DOT ===== */
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.status-dot.idle {
+    background: #64748b;
+}
+
+.status-dot.downloading {
+    background: #3b82f6;
+}
+
+.status-dot.playing {
+    background: #22c55e;
+}
+
+/* ===== VOLUME SLIDER ===== */
+
+.volume-container {
+    margin-bottom: 20px;
+}
+
+.volume-slider {
+    width: 100%;
+    appearance: none;
+    height: 6px;
+    border-radius: 6px;
+    background: #334155;
+    outline: none;
+}
+
+/* Slider thumb (Chrome/Safari) */
+.volume-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #3b82f6;
+    cursor: pointer;
+}
+
+/* Slider thumb (Firefox) */
+.volume-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #3b82f6;
+    cursor: pointer;
+}
+
+/* ===== UPLOAD BUTTON ===== */
+
+.upload-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    background: #3b82f6;
+    color: white;
+}

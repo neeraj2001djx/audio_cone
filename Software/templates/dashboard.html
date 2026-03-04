@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP Audio Control</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="header">
+    <h1 class="title">ESP Audio Control Panel</h1>
+    <p class="subtitle">Real-Time MQTT Audio Network</p>
+</header>
+
+<div class="device-grid" id="deviceContainer"></div>
+
+<script>
+const deviceMap = {};
+
+async function loadDevices() {
+
+    const res = await fetch("/devices");
+    const data = await res.json();
+
+    const devices = data.devices || [];
+    const states = data.states || {};
+    const volumes = data.volumes || {};
+
+    const container = document.getElementById("deviceContainer");
+
+    devices.forEach(id => {
+
+        if (!deviceMap[id]) {
+
+            const card = document.createElement("div");
+            card.className = "device-card";
+            card.id = "card-" + id;
+
+            card.innerHTML = `
+                <div class="device-name">${id}</div>
+                <div class="device-status">
+                    <span class="status-dot"></span>
+                    <span class="state-text"></span>
+                </div>
+
+                <div class="volume-container">
+                    <input type="range"
+                           min="0.1"
+                           max="5"
+                           step="0.1"
+                           class="volume-slider"
+                           oninput="setVolume('${id}', this.value)">
+                </div>
+
+                <button class="upload-btn" onclick="triggerUpload('${id}')">
+                    Upload Audio
+                </button>
+
+                <input type="file" id="file-${id}" hidden>
+            `;
+
+            container.appendChild(card);
+            deviceMap[id] = card;
+        }
+
+        // UPDATE STATE (without recreating card)
+        const card = deviceMap[id];
+        const state = states[id] || "idle";
+        const volume = volumes[id] !== undefined ? volumes[id] : 1;
+
+        card.querySelector(".state-text").innerText = state;
+        card.querySelector(".status-dot").className = "status-dot " + state;
+        card.className = "device-card " + state;
+
+        const slider = card.querySelector(".volume-slider");
+        if (slider !== document.activeElement) {
+            slider.value = volume;
+        }
+    });
+}
+
+async function setVolume(id, value) {
+    await fetch(`/volume/${id}`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({volume: value})
+    });
+}
+
+function triggerUpload(id) {
+    const input = document.getElementById(`file-${id}`);
+    input.click();
+
+    input.onchange = async function() {
+        const formData = new FormData();
+        formData.append("file", input.files[0]);
+
+        await fetch(`/upload/${id}`, {
+            method: "POST",
+            body: formData
+        });
+
+        input.value = "";
+    };
+}
+
+setInterval(loadDevices, 2000);  // less aggressive refresh
+loadDevices();
+</script>
+
+</body>
+</html>

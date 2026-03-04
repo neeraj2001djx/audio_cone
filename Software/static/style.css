@@ -1,0 +1,129 @@
+/* ---------- GLOBAL ---------- */
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: #e2e8f0;
+}
+
+/* ---------- HEADER ---------- */
+
+.header {
+    text-align: center;
+    padding: 30px 20px 10px 20px;
+}
+
+.title {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+
+.subtitle {
+    font-size: 14px;
+    opacity: 0.6;
+    margin-top: 5px;
+}
+
+/* ---------- GRID ---------- */
+
+.device-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 25px;
+    padding: 30px;
+    max-width: 1200px;
+    margin: auto;
+}
+
+/* ---------- CARD ---------- */
+
+.device-card {
+    background: #1e293b;
+    border-radius: 16px;
+    padding: 20px;
+    border: 2px solid #334155;
+    transition: 0.3s ease;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+.device-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+}
+
+/* ---------- DEVICE INFO ---------- */
+
+.device-name {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.device-status {
+    font-size: 14px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: capitalize;
+}
+
+/* ---------- STATUS DOT ---------- */
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.status-dot.idle {
+    background: #64748b;
+}
+
+.status-dot.downloading {
+    background: #3b82f6;
+    box-shadow: 0 0 8px #3b82f6;
+}
+
+.status-dot.playing {
+    background: #22c55e;
+    box-shadow: 0 0 8px #22c55e;
+}
+
+/* ---------- CARD STATE COLORS ---------- */
+
+.device-card.idle {
+    border-color: #334155;
+}
+
+.device-card.downloading {
+    border-color: #3b82f6;
+    box-shadow: 0 0 15px rgba(59,130,246,0.6);
+}
+
+.device-card.playing {
+    border-color: #22c55e;
+    box-shadow: 0 0 15px rgba(34,197,94,0.6);
+}
+
+/* ---------- BUTTON ---------- */
+
+button {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    background: linear-gradient(90deg, #2563eb, #3b82f6);
+    color: white;
+    transition: 0.2s ease;
+}
+
+button:hover {
+    transform: scale(1.03);
+    opacity: 0.9;
+}

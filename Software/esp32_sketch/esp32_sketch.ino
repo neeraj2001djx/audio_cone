@@ -2,656 +2,684 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <Preferences.h>
-#include <PubSubClient.h>
-#include <HTTPClient.h>
 #include <SPI.h>
 #include <SD.h>
-#include "driver/i2s.h"
+#include <PubSubClient.h>
+#include <HTTPClient.h>
 
-/************************************************************
-   ESP32 Audio + WiFi Setup + MQTT
-   DEVICE_ID: cone_left
-************************************************************/
-
-#define DEVICE_ID "audio_cone_001"
-
-String topicCommand = "devices/" + String(DEVICE_ID) + "/command";
-String topicVolume  = "devices/" + String(DEVICE_ID) + "/volume";
-String topicState   = "devices/" + String(DEVICE_ID) + "/state";
-String topicStatus  = "devices/" + String(DEVICE_ID) + "/status";
-
-unsigned long lastWifiAttempt = 0;
-const unsigned long WIFI_RETRY_INTERVAL = 10000; // 10 seconds
-
-bool wifiConnecting = false;
-unsigned long wifiStartAttempt = 0;
-const unsigned long WIFI_CONNECT_TIMEOUT = 15000;
-
-File audioFile;
-bool audioOpen = false;
-
-
-unsigned long resetWindowStart = 0;
-int resetPressCount = 0;
-
-const int RESET_PRESS_TARGET = 20;
-const unsigned long RESET_WINDOW = 20000; // 20 seconds
-
-//////////////////////////////////////////////////////////////
-// AP CONFIG
-//////////////////////////////////////////////////////////////
-
-const char* ap_ssid     = "ESP32_SETUP";
-const char* ap_password = "12345678";
-
-WebServer server(80);
-DNSServer dnsServer;
-const byte DNS_PORT = 53;
-
-Preferences preferences;
-
-//////////////////////////////////////////////////////////////
-// MQTT CONFIG
-//////////////////////////////////////////////////////////////
-
-String mqtt_server = "192.168.31.164";
-int mqtt_port      = 1883;
-
-WiFiClient wifiClient;
-PubSubClient client(wifiClient);
-
-//////////////////////////////////////////////////////////////
-// PINS
-//////////////////////////////////////////////////////////////
-
-#define SD_CS   5
-#define SD_SCK  18
-#define SD_MISO 19
-#define SD_MOSI 23
-
-#define I2S_BCLK 26
-#define I2S_LRC  25
-#define I2S_DOUT 22
+#include <AudioFileSourceSD.h>
+#include <AudioGeneratorWAV.h>
+#include <AudioOutputI2S.h>
 
 #define BUTTON_PIN 4
+#define SD_CS 5
 
-//////////////////////////////////////////////////////////////
+#define I2S_BCLK 26
+#define I2S_LRC 25
+#define I2S_DOUT 22
 
-uint8_t audioBuffer[16384];
-float volumeGain = 1.0;
+#define LED_RED 32
+#define LED_YELLOW 33
+#define LED_GREEN 27
 
-String pendingFile     = "";
-bool downloadRequested = false;
-bool downloading       = false;
-bool playing           = false;
-bool wifiConnected     = false;
-bool lastButtonState   = HIGH;
+Preferences prefs;
+WebServer server(80);
+DNSServer dns;
 
-//////////////////////////////////////////////////////////////
-// I2S
-//////////////////////////////////////////////////////////////
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
 
-void setupI2S() {
+String device_id="Audio_Cone_001";
 
-  i2s_config_t config = {
-    .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
-    .sample_rate = 44100,
-    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-    .communication_format = I2S_COMM_FORMAT_I2S,
-    .intr_alloc_flags = 0,
-    .dma_buf_count = 8,
-    .dma_buf_len = 256,
-    .use_apll = false,
-    .tx_desc_auto_clear = true,
-    .fixed_mclk = 0
-  };
+String ssid;
+String pass;
+String server_ip;
+int server_port;
 
-  i2s_pin_config_t pins = {
-    .bck_io_num   = I2S_BCLK,
-    .ws_io_num    = I2S_LRC,
-    .data_out_num = I2S_DOUT,
-    .data_in_num  = I2S_PIN_NO_CHANGE
-  };
+bool wifiConfigured=false;
+bool apModeRunning=false;
+bool audioPlaying=false;
+bool downloadingAudio=false;
 
-  i2s_driver_install(I2S_NUM_0, &config, 0, NULL);
-  i2s_set_pin(I2S_NUM_0, &pins);
+bool lastButtonState=HIGH;
+unsigned long debounceTime=0;
+
+unsigned long lastWifiAttempt=0;
+bool wifiConnecting=false;
+
+unsigned long lastMQTTAttempt=0;
+
+bool sdMounted=false;
+
+unsigned long yellowBlinkTimer=0;
+unsigned long greenBlinkTimer=0;
+
+bool yellowBlinkState=false;
+bool greenBlinkState=false;
+
+float volumeLevel=0.8;
+
+AudioGeneratorWAV *wav;
+AudioFileSourceSD *file;
+AudioOutputI2S *out;
+
+uint8_t downloadBuffer[4096];
+
+int pressCount=0;
+unsigned long firstPressTime=0;
+
+
+/* ================= AUDIO ================= */
+
+void startPlayback()
+{
+Serial.println("AUDIO: Starting playback");
+
+file=new AudioFileSourceSD("/audio.wav");
+out=new AudioOutputI2S();
+wav=new AudioGeneratorWAV();
+
+out->SetPinout(I2S_BCLK,I2S_LRC,I2S_DOUT);
+out->SetGain(volumeLevel);
+
+wav->begin(file,out);
 }
 
-//////////////////////////////////////////////////////////////
-// VOLUME
-//////////////////////////////////////////////////////////////
-
-void applyVolume(uint8_t* buffer, size_t length) {
-
-  int16_t* samples = (int16_t*)buffer;
-  int count = length / 2;
-
-  for (int i = 0; i < count; i++) {
-
-    int32_t scaled = samples[i] * volumeGain;
-
-    if (scaled > 32767) scaled = 32767;
-    if (scaled < -32768) scaled = -32768;
-
-    samples[i] = scaled;
-  }
-}
-
-//////////////////////////////////////////////////////////////
-// SETTINGS
-//////////////////////////////////////////////////////////////
-
-void loadSettings() {
-
-  preferences.begin("config", true);
-
-  mqtt_server = preferences.getString("mqtt_server", "192.168.31.164");
-  mqtt_port   = preferences.getInt("mqtt_port", 1883);
-
-  preferences.end();
-}
-
-void saveSettings(String ssid, String pass,
-                  String mqttServer, String mqttPort) {
-
-  preferences.begin("config", false);
-
-  preferences.putString("ssid", ssid);
-  preferences.putString("pass", pass);
-  preferences.putString("mqtt_server", mqttServer);
-  preferences.putInt("mqtt_port", mqttPort.toInt());
-
-  preferences.end();
-}
-
-void saveVolume() {
-
-  File f = SD.open("/volume.txt", FILE_WRITE);
-
-  if (!f) {
-    Serial.println("Failed to save volume");
-    return;
-  }
-
-  f.seek(0);
-  f.print(volumeGain);
-  f.close();
-
-  Serial.println("Volume saved to SD");
-}
-
-void loadVolumeFromSD() {
-
-  if (!SD.exists("/volume.txt")) {
-
-    Serial.println("No volume file, using default");
-    volumeGain = 1.0;
-    return;
-  }
-
-  File f = SD.open("/volume.txt");
-
-  if (!f) {
-    Serial.println("Failed to read volume file");
-    volumeGain = 1.0;
-    return;
-  }
-
-  String v = f.readString();
-  volumeGain = v.toFloat();
-
-  f.close();
-
-  Serial.print("Volume loaded from SD: ");
-  Serial.println(volumeGain);
-}
-
-//////////////////////////////////////////////////////////////
-// WIFI
-//////////////////////////////////////////////////////////////
-
-bool startWiFiConnection() {
-
-  preferences.begin("config", true);
-
-  String ssid = preferences.getString("ssid", "");
-  String pass = preferences.getString("pass", "");
-
-  preferences.end();
-
-  if (ssid == "") return false;
-
-  Serial.println("Starting WiFi connection...");
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid.c_str(), pass.c_str());
-
-  wifiConnecting = true;
-  wifiStartAttempt = millis();
-
-  return true;
-}
-
-//////////////////////////////////////////////////////////////
-// AP MODE
-//////////////////////////////////////////////////////////////
-
-void startAPMode() {
-
-  WiFi.disconnect(true);
-  delay(500);
-
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(ap_ssid, ap_password);
-
-  IPAddress IP = WiFi.softAPIP();
-
-  dnsServer.start(DNS_PORT, "*", IP);
-
-  server.on("/", HTTP_GET, []() {
-
-    server.send(200, "text/html",
-      "<h2>ESP32 Setup</h2>"
-      "<form action='/save'>"
-      "SSID:<br><input name='ssid'><br>"
-      "Password:<br><input name='pass'><br>"
-      "MQTT:<br><input name='mqtt'><br>"
-      "Port:<br><input name='port'><br>"
-      "<input type='submit'>"
-      "</form>");
-  });
-
-  server.on("/save", HTTP_GET, []() {
-
-    saveSettings(
-      server.arg("ssid"),
-      server.arg("pass"),
-      server.arg("mqtt"),
-      server.arg("port")
-    );
-
-    server.send(200, "text/html", "Saved. Rebooting...");
-    delay(2000);
-    ESP.restart();
-  });
-
-  server.onNotFound([]() {
-    server.sendHeader("Location", "/", true);
-    server.send(302, "text/plain", "");
-  });
-
-  server.begin();
-}
-
-//////////////////////////////////////////////////////////////
-// MQTT
-//////////////////////////////////////////////////////////////
-
-void callback(char* topic, byte* payload, unsigned int length) {
-
-  String message;
-
-  for (int i = 0; i < length; i++)
-    message += (char)payload[i];
-
-  if (String(topic).endsWith("/volume")) {
-
-    volumeGain = message.toFloat();
-    saveVolume();
-    return;
-  }
-
-  pendingFile = message;
-  downloadRequested = true;
-}
-
-void connectMQTT() {
-
-  if (client.connected()) return;
-
-  client.setServer(mqtt_server.c_str(), mqtt_port);
-
-  if (client.connect(
-        DEVICE_ID,
-        topicStatus.c_str(),
-        1,
-        true,
-        "offline")) {
-
-    client.subscribe(topicCommand.c_str());
-    client.subscribe(topicVolume.c_str());
-
-    client.publish(topicStatus.c_str(), "online", true);
-    client.publish(topicState.c_str(), "idle", true);
-
-    client.publish(topicVolume.c_str(),
-                   String(volumeGain).c_str(),
-                   true);
-  }
-}
-
-//////////////////////////////////////////////////////////////
-// DOWNLOAD AUDIO
-//////////////////////////////////////////////////////////////
-
-void downloadAudio(String filename) {
-
-  downloading = true;
-
-  client.publish(topicState.c_str(), "downloading", true);
-
-  WiFiClient httpClient;
-  HTTPClient http;
-
-  String url = "http://" + mqtt_server + ":5000/audio/" + filename;
-
-  http.begin(httpClient, url);
-
-  int code = http.GET();
-
-  if (code != 200) {
-
-    downloading = false;
-    http.end();
-    return;
-  }
-
-  if (SD.exists("/audio.wav"))
-    SD.remove("/audio.wav");
-
-  File file = SD.open("/audio.wav", FILE_WRITE);
-
-  WiFiClient* stream = http.getStreamPtr();
-
-  while (http.connected() || stream->available()) {
-
-    size_t available = stream->available();
-
-    if (available) {
-
-      int bytes = stream->readBytes(
-        audioBuffer,
-        min(available, sizeof(audioBuffer))
-      );
-
-      if (bytes > 0)
-        file.write(audioBuffer, bytes);
-    }
-
-    delay(1);
-  }
-
-  file.close();
-  http.end();
-
-  downloading = false;
-
-  client.publish(topicState.c_str(), "idle", true);
-}
-
-//////////////////////////////////////////////////////////////
-// PLAY AUDIO
-//////////////////////////////////////////////////////////////
-
-void playAudio() {
-
-  if (!SD.exists("/audio.wav")) return;
-
-  audioFile = SD.open("/audio.wav");
-
-  if (!audioFile) return;
-
-  audioFile.seek(44);
-
-  audioOpen = true;
-  playing = true;
-
-  if (wifiConnected)
-    client.publish(topicState.c_str(), "playing", true);
+void stopPlayback()
+{
+Serial.println("AUDIO: Stopping playback");
+
+if(wav){wav->stop();delete wav;wav=NULL;}
+if(file){delete file;file=NULL;}
+if(out){delete out;out=NULL;}
 }
 
 
-void factoryReset() {
+/* ================= DOWNLOAD ================= */
 
-  Serial.println("FACTORY RESET TRIGGERED");
+void downloadAudio(String filename)
+{
+downloadingAudio=true;
 
-  preferences.begin("config", false);
-  preferences.clear();   // erase WiFi + MQTT settings
-  preferences.end();
+Serial.println("DOWNLOAD: Start");
 
-  delay(1000);
+if(mqttClient.connected())
+mqttClient.publish(("devices/"+device_id+"/state").c_str(),"downloading",true);
 
-  ESP.restart();
+String url="http://"+server_ip+":5000/audio/"+filename;
+
+HTTPClient http;
+http.begin(url);
+
+int httpCode=http.GET();
+
+if(httpCode==HTTP_CODE_OK)
+{
+Serial.println("DOWNLOAD: HTTP OK");
+
+if(SD.exists("/audio.wav"))
+SD.remove("/audio.wav");
+
+File file=SD.open("/audio.wav",FILE_WRITE,true);
+
+WiFiClient *stream=http.getStreamPtr();
+
+size_t bufferFill=0;
+
+while(http.connected()||stream->available())
+{
+
+handleLEDs();
+
+if(mqttClient.connected())
+mqttClient.loop();
+
+int available=stream->available();
+
+if(available)
+{
+
+int len=stream->readBytes(
+downloadBuffer+bufferFill,
+min(available,(int)(sizeof(downloadBuffer)-bufferFill))
+);
+
+bufferFill+=len;
+
+if(bufferFill>=sizeof(downloadBuffer))
+{
+file.write(downloadBuffer,bufferFill);
+bufferFill=0;
+}
+
+}
+
+yield();
+}
+
+if(bufferFill>0)
+file.write(downloadBuffer,bufferFill);
+
+file.close();
+
+Serial.println("DOWNLOAD: Completed");
+}
+
+else
+{
+Serial.println("DOWNLOAD: HTTP FAILED");
+}
+
+http.end();
+
+downloadingAudio=false;
+
+if(mqttClient.connected())
+mqttClient.publish(("devices/"+device_id+"/state").c_str(),"idle",true);
 }
 
 
-//////////////////////////////////////////////////////////////
-// SETUP
-//////////////////////////////////////////////////////////////
+/* ================= RESET ================= */
 
-void setup() {
+void resetMemory()
+{
+Serial.println("RESET: Clearing configuration");
 
-  Serial.begin(115200);
+prefs.clear();
 
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+delay(1000);
 
-  WiFi.setSleep(false);
-
-  SPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-
-  if (!SD.begin(SD_CS)) {
-
-    Serial.println("SD Failed");
-    while (true);
-  }
-
-  loadVolumeFromSD();
-  loadSettings();
-  setupI2S();
-
-  wifiConnected = startWiFiConnection();
-
-  if (!wifiConnected)
-    startAPMode();
-
-  client.setCallback(callback);
+ESP.restart();
 }
 
-//////////////////////////////////////////////////////////////
-// LOOP
-//////////////////////////////////////////////////////////////
+void checkMultiPress()
+{
 
-void loop() {
-  if (resetPressCount > 0 &&
-      millis() - resetWindowStart > RESET_WINDOW) {
+unsigned long now=millis();
 
-    resetPressCount = 0;
-  }
-  ////////////////////////////////////////////////////////////
-  // WIFI CONNECTION PROGRESS
-  ////////////////////////////////////////////////////////////
+if(pressCount==0)
+firstPressTime=now;
 
-  if (wifiConnecting) {
+pressCount++;
 
-    if (WiFi.status() == WL_CONNECTED) {
+Serial.print("RESET COUNTER: ");
+Serial.println(pressCount);
 
-      wifiConnected = true;
-      wifiConnecting = false;
+if(pressCount>=20)
+{
 
-      Serial.println("WiFi Connected!");
-      Serial.println(WiFi.localIP());
-    }
+if(now-firstPressTime<=20000)
+resetMemory();
 
-    if (millis() - wifiStartAttempt > WIFI_CONNECT_TIMEOUT) {
+else
+pressCount=0;
 
-      Serial.println("WiFi connection timeout");
+}
 
-      wifiConnecting = false;
-      wifiConnected = false;
+}
 
-      startAPMode();
-    }
+void checkPressTimeout()
+{
 
-    // BUTTON HAS PRIORITY → cancel connection attempt
-    if (playing) {
+if(pressCount==0)return;
 
-      Serial.println("Audio priority: cancelling WiFi connect");
+if(millis()-firstPressTime>20000)
+{
+Serial.println("RESET WINDOW EXPIRED");
+pressCount=0;
+}
 
-      WiFi.disconnect(true);
-      wifiConnecting = false;
-      wifiConnected = false;
-    }
-  }
+}
 
-  ////////////////////////////////////////////////////////////
-  // WIFI RECONNECT LOGIC
-  ////////////////////////////////////////////////////////////
 
-  if (!wifiConnected && !wifiConnecting && !playing && !downloading) {
+/* ================= SD ================= */
 
-    if (millis() - lastWifiAttempt > WIFI_RETRY_INTERVAL) {
+void mountSD()
+{
 
-      lastWifiAttempt = millis();
+Serial.println("SD: Mounting");
 
-      Serial.println("Retrying WiFi connection...");
+SPI.begin(18,19,23,SD_CS);
 
-      if (!startWiFiConnection()) {
-        Serial.println("No WiFi credentials saved.");
-      }
-    }
-  }
+if(!SD.begin(SD_CS,SPI,10000000))
+{
+Serial.println("SD: FAILED");
+sdMounted=false;
+}
 
-  ////////////////////////////////////////////////////////////
-  // AP MODE HANDLING
-  ////////////////////////////////////////////////////////////
+else
+{
+Serial.println("SD: Mounted");
+sdMounted=true;
+}
 
-  if (!wifiConnected) {
+}
 
-    dnsServer.processNextRequest();
-    server.handleClient();
-  }
 
-  ////////////////////////////////////////////////////////////
-  // WIFI CONNECTED
-  ////////////////////////////////////////////////////////////
+/* ================= LED ================= */
 
-  if (wifiConnected) {
+void handleLEDs()
+{
 
-    if (WiFi.status() != WL_CONNECTED) {
+unsigned long now=millis();
 
-      Serial.println("WiFi lost.");
+digitalWrite(LED_RED,digitalRead(BUTTON_PIN)==LOW);
 
-      wifiConnected = false;
+if(!sdMounted)
+digitalWrite(LED_YELLOW,LOW);
 
-      startAPMode();
+else if(downloadingAudio)
+{
 
-    } else {
+if(now-yellowBlinkTimer>300)
+{
+yellowBlinkTimer=now;
+yellowBlinkState=!yellowBlinkState;
+digitalWrite(LED_YELLOW,yellowBlinkState);
+}
 
-      connectMQTT();
-      client.loop();
-    }
-  }
+}
 
-  ////////////////////////////////////////////////////////////
-  // BUTTON
-  ////////////////////////////////////////////////////////////
+else
+digitalWrite(LED_YELLOW,HIGH);
 
-  bool currentButtonState = digitalRead(BUTTON_PIN);
+if(WiFi.status()!=WL_CONNECTED)
+digitalWrite(LED_GREEN,LOW);
 
-  if (lastButtonState == HIGH && currentButtonState == LOW) {
+else if(!mqttClient.connected())
+{
 
-    unsigned long now = millis();
+if(now-greenBlinkTimer>500)
+{
+greenBlinkTimer=now;
+greenBlinkState=!greenBlinkState;
+digitalWrite(LED_GREEN,greenBlinkState);
+}
 
-    if (resetPressCount == 0) {
-      resetWindowStart = now;
-    }
+}
 
-    resetPressCount++;
+else
+digitalWrite(LED_GREEN,HIGH);
 
-    Serial.print("Reset press count: ");
-    Serial.println(resetPressCount);
+}
 
-    if (resetPressCount >= RESET_PRESS_TARGET &&
-        now - resetWindowStart <= RESET_WINDOW) {
 
-      factoryReset();
-    }
+/* ================= PORTAL ================= */
 
-    if (now - resetWindowStart > RESET_WINDOW) {
+void handleSave()
+{
 
-      resetPressCount = 1;
-      resetWindowStart = now;
-    }
+Serial.println("PORTAL: Saving config");
 
-    if (!playing && !downloading) {
-      playAudio();
-    }
-  }
+ssid=server.arg("ssid");
+pass=server.arg("pass");
+server_ip=server.arg("ip");
+server_port=server.arg("port").toInt();
 
-  if (lastButtonState == LOW && currentButtonState == HIGH) {
+prefs.putString("ssid",ssid);
+prefs.putString("pass",pass);
+prefs.putString("ip",server_ip);
+prefs.putInt("port",server_port);
 
-    if (playing) {
+server.send(200,"text/plain","Saved. Rebooting...");
 
-      playing = false;
+delay(1000);
 
-      if (audioOpen) {
+ESP.restart();
 
-        audioFile.close();
-        audioOpen = false;
+}
 
-        i2s_zero_dma_buffer(I2S_NUM_0);
-      }
+void startAPMode()
+{
 
-      if (wifiConnected)
-        client.publish(topicState.c_str(), "idle", true);
-    }
-  }
+Serial.println("PORTAL: Starting AP");
 
-  lastButtonState = currentButtonState;
+WiFi.mode(WIFI_AP_STA);
+WiFi.softAP("Audio Cone Setup","12345678");
 
-  ////////////////////////////////////////////////////////////
-  // AUDIO ENGINE
-  ////////////////////////////////////////////////////////////
+IPAddress IP=WiFi.softAPIP();
 
-  if (playing && audioOpen) {
+dns.start(53,"*",IP);
 
-    size_t bytesRead = audioFile.read(audioBuffer, sizeof(audioBuffer));
+apModeRunning=true;
 
-    if (bytesRead <= 0) {
+server.on("/",[](){
 
-      playing = false;
+String page=
+"<html><body>"
+"<h2>ESP Setup</h2>"
+"<form action='/save'>"
+"SSID:<input name='ssid'><br>"
+"PASS:<input name='pass'><br>"
+"Server IP:<input name='ip'><br>"
+"Port:<input name='port'><br>"
+"<input type='submit'>"
+"</form>"
+"</body></html>";
 
-      audioFile.close();
-      audioOpen = false;
+server.send(200,"text/html",page);
 
-      i2s_zero_dma_buffer(I2S_NUM_0);
+});
 
-      if (wifiConnected)
-        client.publish(topicState.c_str(), "idle", true);
-    }
-    else {
+server.on("/generate_204",[](){
+server.sendHeader("Location","/",true);
+server.send(302,"text/plain","");
+});
 
-      applyVolume(audioBuffer, bytesRead);
+server.on("/hotspot-detect.html",[](){
+server.sendHeader("Location","/",true);
+server.send(302,"text/plain","");
+});
 
-      size_t written;
+server.on("/save",handleSave);
 
-      i2s_write(
-        I2S_NUM_0,
-        audioBuffer,
-        bytesRead,
-        &written,
-        portMAX_DELAY
-      );
-    }
-  }
+server.begin();
 
-  ////////////////////////////////////////////////////////////
+}
 
-  if (downloadRequested && wifiConnected) {
 
-    downloadRequested = false;
+/* ================= CONFIG ================= */
 
-    downloadAudio(pendingFile);
-  }
+void loadConfig()
+{
+
+Serial.println("CONFIG: Loading");
+
+ssid=prefs.getString("ssid","");
+pass=prefs.getString("pass","");
+server_ip=prefs.getString("ip","");
+server_port=prefs.getInt("port",0);
+
+if(ssid!="" && server_ip!="" && server_port!=0)
+{
+
+wifiConfigured=true;
+
+Serial.println("CONFIG: Found");
+
+}
+
+else
+{
+
+Serial.println("CONFIG: Missing");
+
+}
+
+}
+
+
+/* ================= WIFI ================= */
+
+void handleWiFi()
+{
+
+if(downloadingAudio)return;
+if(!wifiConfigured)return;
+if(audioPlaying)return;
+
+if(WiFi.status()==WL_CONNECTED)
+{
+
+if(wifiConnecting)
+{
+
+Serial.print("WIFI: Connected IP=");
+
+Serial.println(WiFi.localIP());
+
+wifiConnecting=false;
+
+}
+
+return;
+
+}
+
+if(millis()-lastWifiAttempt<3000)return;
+
+lastWifiAttempt=millis();
+
+Serial.println("WIFI: Attempting connection");
+
+WiFi.mode(WIFI_AP_STA);
+
+WiFi.begin(ssid.c_str(),pass.c_str());
+
+wifiConnecting=true;
+
+}
+
+
+/* ================= MQTT ================= */
+
+void mqttCallback(char* topic,byte* payload,unsigned int length)
+{
+
+String msg;
+
+for(int i=0;i<length;i++)
+msg+=(char)payload[i];
+
+Serial.print("MQTT RX: ");
+
+Serial.println(topic);
+
+if(String(topic)=="devices/"+device_id+"/command")
+{
+
+Serial.println("MQTT: Download command");
+
+downloadAudio(msg);
+
+}
+
+if(String(topic)=="devices/"+device_id+"/volume")
+{
+
+volumeLevel=msg.toFloat();
+
+Serial.print("MQTT: Volume=");
+
+Serial.println(volumeLevel);
+
+if(out)
+out->SetGain(volumeLevel);
+
+}
+
+}
+
+void handleMQTT()
+{
+
+if(WiFi.status()!=WL_CONNECTED)return;
+
+if(mqttClient.connected())
+{
+
+mqttClient.loop();
+
+return;
+
+}
+
+if(millis()-lastMQTTAttempt<3000)return;
+
+lastMQTTAttempt=millis();
+
+Serial.println("MQTT: Connecting");
+
+mqttClient.setServer(server_ip.c_str(),server_port);
+
+if(mqttClient.connect(
+device_id.c_str(),
+("devices/"+device_id+"/status").c_str(),
+1,true,"offline"))
+{
+
+Serial.println("MQTT: Connected");
+
+mqttClient.publish(("devices/"+device_id+"/status").c_str(),"online",true);
+mqttClient.publish(("devices/"+device_id+"/state").c_str(),"idle",true);
+
+mqttClient.subscribe(("devices/"+device_id+"/command").c_str());
+mqttClient.subscribe(("devices/"+device_id+"/volume").c_str());
+
+}
+
+}
+
+
+/* ================= BUTTON ================= */
+
+void handleButtonPriority()
+{
+
+if(downloadingAudio)return;
+
+bool button=digitalRead(BUTTON_PIN);
+
+if(button==LOW && lastButtonState==HIGH)
+{
+
+if(millis()-debounceTime>50)
+{
+
+debounceTime=millis();
+
+Serial.println("BUTTON: Pressed");
+
+checkMultiPress();
+
+if(!audioPlaying)
+{
+
+audioPlaying=true;
+
+Serial.println("STATE: playing");
+
+if(mqttClient.connected())
+mqttClient.publish(("devices/"+device_id+"/state").c_str(),"playing",true);
+
+if(SD.exists("/audio.wav"))
+startPlayback();
+
+if(apModeRunning)
+{
+
+dns.stop();
+
+server.stop();
+
+}
+
+}
+
+}
+
+}
+
+if(button==HIGH && lastButtonState==LOW)
+{
+
+Serial.println("BUTTON: Released");
+
+if(audioPlaying)
+{
+
+audioPlaying=false;
+
+Serial.println("STATE: idle");
+
+if(mqttClient.connected())
+mqttClient.publish(("devices/"+device_id+"/state").c_str(),"idle",true);
+
+stopPlayback();
+
+if(apModeRunning)
+{
+
+IPAddress IP=WiFi.softAPIP();
+
+dns.start(53,"*",IP);
+
+server.begin();
+
+}
+
+}
+
+}
+
+lastButtonState=button;
+
+}
+
+
+/* ================= SETUP ================= */
+
+void setup()
+{
+
+Serial.begin(115200);
+
+Serial.println("BOOT: Audio Cone");
+
+pinMode(BUTTON_PIN,INPUT_PULLUP);
+
+pinMode(LED_RED,OUTPUT);
+pinMode(LED_YELLOW,OUTPUT);
+pinMode(LED_GREEN,OUTPUT);
+
+mountSD();
+
+prefs.begin("config",false);
+
+loadConfig();
+
+mqttClient.setCallback(mqttCallback);
+
+if(!wifiConfigured)
+startAPMode();
+
+}
+
+
+/* ================= LOOP ================= */
+
+void loop()
+{
+
+handleLEDs();
+
+handleButtonPriority();
+
+checkPressTimeout();
+
+if(audioPlaying)
+{
+
+if(wav && wav->isRunning())
+wav->loop();
+
+delay(1);
+
+return;
+
+}
+
+handleWiFi();
+
+handleMQTT();
+
+if(apModeRunning)
+{
+
+dns.processNextRequest();
+
+server.handleClient();
+
+}
+
 }
